@@ -3,13 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import { FileText, Plus, Search, MoreVertical, CheckCircle, Clock, AlertCircle, Download, CreditCard, Mail, Trash2, Edit, Copy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatCurrency } from '../lib/utils';
 
 export default function Invoices({ settings }: { settings: any }) {
-  const { token, user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
@@ -20,11 +18,10 @@ export default function Invoices({ settings }: { settings: any }) {
   const { data: invoices = [], isLoading } = useQuery({
     queryKey: ['invoices'],
     queryFn: async () => {
-      const res = await fetch('/api/invoices', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch('/api/invoices');
       if (!res.ok) throw new Error('Failed to fetch invoices');
       return res.json();
-    },
-    enabled: !!token,
+    }
   });
 
   const recordPaymentMutation = useMutation({
@@ -32,8 +29,7 @@ export default function Invoices({ settings }: { settings: any }) {
       const res = await fetch(`/api/invoices/${id}/payments`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ amount, method, date: new Date().toISOString() })
       });
@@ -51,8 +47,7 @@ export default function Invoices({ settings }: { settings: any }) {
   const sendEmailMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/invoices/${id}/send`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
+        method: 'POST'
       });
       if (!res.ok) throw new Error('Failed to send email');
       return res.json();
@@ -69,8 +64,7 @@ export default function Invoices({ settings }: { settings: any }) {
   const deleteInvoiceMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/invoices/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
+        method: 'DELETE'
       });
       if (!res.ok) throw new Error('Failed to delete invoice');
       return res.json();
@@ -371,20 +365,18 @@ export default function Invoices({ settings }: { settings: any }) {
                             <Edit className="w-4 h-4" />
                           </button>
                         )}
-                        {(user?.role === 'admin' || user?.role === 'owner') && (
-                          <button 
-                            onClick={() => {
-                              if (window.confirm('Are you sure you want to delete this invoice?')) {
-                                deleteInvoiceMutation.mutate(invoice.id);
-                              }
-                            }}
-                            className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Delete Invoice"
-                            disabled={deleteInvoiceMutation.isPending}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
+                        <button 
+                          onClick={() => {
+                            if (window.confirm('Are you sure you want to delete this invoice?')) {
+                              deleteInvoiceMutation.mutate(invoice.id);
+                            }
+                          }}
+                          className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete Invoice"
+                          disabled={deleteInvoiceMutation.isPending}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>

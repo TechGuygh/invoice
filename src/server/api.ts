@@ -1,82 +1,16 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 
 const prisma = new PrismaClient();
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-jwt-key-for-dev';
-
-// Middleware to authenticate requests
-const authenticate = (req: any, res: any, next: any) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
-
-  const token = authHeader.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    req.user = decoded;
-    next();
-  } catch (err) {
-    res.status(401).json({ error: 'Invalid token' });
-  }
-};
-
-const requireRole = (roles: string[]) => {
-  return (req: any, res: any, next: any) => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      return res.status(403).json({ error: 'Forbidden: Insufficient permissions' });
-    }
-    next();
-  };
-};
 
 router.use(express.json());
 
-// Auth routes
-router.post('/auth/auto-login', async (req, res) => {
-  try {
-    const defaultEmail = 'default@example.com';
-    let user = await prisma.user.findUnique({ where: { email: defaultEmail } });
-
-    if (!user) {
-      const organization = await prisma.organization.create({
-        data: { name: 'Default Organization' },
-      });
-
-      user = await prisma.user.create({
-        data: {
-          email: defaultEmail,
-          passwordHash: 'not-needed',
-          name: 'Default User',
-          role: 'owner',
-          organizationId: organization.id,
-        },
-      });
-    }
-
-    const token = jwt.sign({ userId: user.id, orgId: user.organizationId, role: user.role }, JWT_SECRET, { expiresIn: '365d' });
-    res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-router.post('/auth/logout', authenticate, async (req, res) => {
-  // In a real app with refresh tokens, you would invalidate them here.
-  // For JWT access tokens, the client just drops the token.
-  res.json({ success: true, message: 'Logged out successfully' });
-});
-
-// Customers and Items routes removed
-
 // Invoices
-router.get('/invoices', authenticate, async (req: any, res) => {
+router.get('/invoices', async (req: any, res) => {
   try {
     const invoices = await prisma.invoice.findMany({
-      where: { organizationId: req.user.orgId },
       include: { lineItems: true, payments: true },
       orderBy: { createdAt: 'desc' }
     });
@@ -87,7 +21,7 @@ router.get('/invoices', authenticate, async (req: any, res) => {
   }
 });
 
-router.post('/invoices', authenticate, requireRole(['owner', 'admin', 'staff']), async (req: any, res) => {
+router.post('/invoices', async (req: any, res) => {
   try {
     const { customerName, customerDetails, issueDate, dueDate, lineItems, notes, terms, currency, exchangeRate } = req.body;
     
@@ -113,18 +47,12 @@ router.post('/invoices', authenticate, requireRole(['owner', 'admin', 'staff']),
     
     const total = subtotal - discountTotal + taxTotal;
     
-    // Get next invoice number
-    const org = await prisma.organization.findUnique({ where: { id: req.user.orgId } });
-    const invoiceNumber = `${org?.invoicePrefix}${org?.nextInvoiceNum.toString().padStart(4, '0')}`;
-    
-    await prisma.organization.update({
-      where: { id: req.user.orgId },
-      data: { nextInvoiceNum: { increment: 1 } }
-    });
+    // Generate a simple invoice number
+    const count = await prisma.invoice.count();
+    const invoiceNumber = `INV-${(count + 1).toString().padStart(4, '0')}`;
 
     const invoice = await prisma.invoice.create({
       data: {
-        organizationId: req.user.orgId,
         customerName,
         customerDetails,
         invoiceNumber,
@@ -153,10 +81,10 @@ router.post('/invoices', authenticate, requireRole(['owner', 'admin', 'staff']),
   }
 });
 
-router.get('/invoices/:id', authenticate, async (req: any, res) => {
+router.get('/invoices/:id', async (req: any, res) => {
   try {
     const invoice = await prisma.invoice.findFirst({
-      where: { id: req.params.id, organizationId: req.user.orgId },
+      where: { id: req.params.id },
       include: { lineItems: true, payments: true }
     });
     if (!invoice) return res.status(404).json({ error: 'Not found' });
@@ -166,8 +94,6 @@ router.get('/invoices/:id', authenticate, async (req: any, res) => {
     res.status(500).json({ error: 'Failed to fetch invoice' });
   }
 });
-
-// ... (existing imports)
 
 // Email configuration
 const getTransporter = async () => {
@@ -196,14 +122,11 @@ const getTransporter = async () => {
   }
 };
 
-// ... (existing code)
-
-router.post('/invoices/:id/send', authenticate, requireRole(['owner', 'admin', 'staff']), async (req: any, res) => {
+router.post('/invoices/:id/send', async (req: any, res) => {
   try {
     const invoiceId = req.params.id;
     const invoice = await prisma.invoice.findFirst({
-      where: { id: invoiceId, organizationId: req.user.orgId },
-      include: { organization: true }
+      where: { id: invoiceId }
     });
 
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
@@ -211,10 +134,10 @@ router.post('/invoices/:id/send', authenticate, requireRole(['owner', 'admin', '
     const transporter = await getTransporter();
     
     const info = await transporter.sendMail({
-      from: `"${invoice.organization.name}" <${process.env.SMTP_FROM || 'noreply@example.com'}>`,
+      from: `"Your Company" <${process.env.SMTP_FROM || 'noreply@example.com'}>`,
       to: "customer@example.com", // In a real app, you'd extract email from customerDetails or add an email field
-      subject: `Invoice ${invoice.invoiceNumber} from ${invoice.organization.name}`,
-      text: `Dear ${invoice.customerName},\n\nPlease find attached your invoice ${invoice.invoiceNumber} for the amount of ${invoice.currency || 'USD'} ${invoice.total.toFixed(2)}.\n\nDue Date: ${new Date(invoice.dueDate).toLocaleDateString()}\n\nThank you for your business!\n\n${invoice.organization.name}`,
+      subject: `Invoice ${invoice.invoiceNumber}`,
+      text: `Dear ${invoice.customerName},\n\nPlease find attached your invoice ${invoice.invoiceNumber} for the amount of ${invoice.currency || 'USD'} ${invoice.total.toFixed(2)}.\n\nDue Date: ${new Date(invoice.dueDate).toLocaleDateString()}\n\nThank you for your business!`,
       html: `
         <div style="font-family: sans-serif; max-w: 600px; margin: 0 auto;">
           <h2>Invoice ${invoice.invoiceNumber}</h2>
@@ -226,7 +149,6 @@ router.post('/invoices/:id/send', authenticate, requireRole(['owner', 'admin', '
             <li><strong>Due Date:</strong> ${new Date(invoice.dueDate).toLocaleDateString()}</li>
           </ul>
           <p>Thank you for your business!</p>
-          <p><strong>${invoice.organization.name}</strong></p>
         </div>
       `,
     });
@@ -249,13 +171,13 @@ router.post('/invoices/:id/send', authenticate, requireRole(['owner', 'admin', '
   }
 });
 
-router.put('/invoices/:id', authenticate, requireRole(['owner', 'admin', 'staff']), async (req: any, res) => {
+router.put('/invoices/:id', async (req: any, res) => {
   try {
     const { customerName, customerDetails, issueDate, dueDate, lineItems, notes, terms, currency, exchangeRate } = req.body;
     const invoiceId = req.params.id;
 
     const existingInvoice = await prisma.invoice.findFirst({
-      where: { id: invoiceId, organizationId: req.user.orgId }
+      where: { id: invoiceId }
     });
 
     if (!existingInvoice) return res.status(404).json({ error: 'Invoice not found' });
@@ -322,12 +244,12 @@ router.put('/invoices/:id', authenticate, requireRole(['owner', 'admin', 'staff'
   }
 });
 
-router.delete('/invoices/:id', authenticate, requireRole(['owner', 'admin']), async (req: any, res) => {
+router.delete('/invoices/:id', async (req: any, res) => {
   try {
     const invoiceId = req.params.id;
 
     const existingInvoice = await prisma.invoice.findFirst({
-      where: { id: invoiceId, organizationId: req.user.orgId }
+      where: { id: invoiceId }
     });
 
     if (!existingInvoice) return res.status(404).json({ error: 'Invoice not found' });
@@ -353,13 +275,13 @@ router.delete('/invoices/:id', authenticate, requireRole(['owner', 'admin']), as
 });
 
 // Payments
-router.post('/invoices/:id/payments', authenticate, requireRole(['owner', 'admin', 'staff']), async (req: any, res) => {
+router.post('/invoices/:id/payments', async (req: any, res) => {
   try {
     const { amount, method, reference, date } = req.body;
     const invoiceId = req.params.id;
     
     const invoice = await prisma.invoice.findFirst({
-      where: { id: invoiceId, organizationId: req.user.orgId }
+      where: { id: invoiceId }
     });
     
     if (!invoice) return res.status(404).json({ error: 'Not found' });
@@ -397,11 +319,9 @@ router.post('/invoices/:id/payments', authenticate, requireRole(['owner', 'admin
 });
 
 // Dashboard stats
-router.get('/dashboard/stats', authenticate, async (req: any, res) => {
+router.get('/dashboard/stats', async (req: any, res) => {
   try {
-    const invoices = await prisma.invoice.findMany({
-      where: { organizationId: req.user.orgId }
-    });
+    const invoices = await prisma.invoice.findMany();
     
     const totalRevenue = invoices.filter(i => i.status === 'paid' || i.status === 'partially_paid')
       .reduce((sum, i) => sum + (i.total - i.amountDue), 0);
@@ -418,7 +338,5 @@ router.get('/dashboard/stats', authenticate, async (req: any, res) => {
     res.status(500).json({ error: 'Failed to fetch dashboard stats' });
   }
 });
-
-// Analytics route removed
 
 export default router;

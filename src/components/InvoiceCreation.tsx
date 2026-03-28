@@ -4,12 +4,10 @@ import { Plus, Trash2, Download, Save, Loader2 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '../context/AuthContext';
 import { useParams, useNavigate } from 'react-router-dom';
 import { formatCurrency } from '../lib/utils';
 
 export default function InvoiceCreation({ settings }: { settings: any }) {
-  const { token } = useAuth();
   const queryClient = useQueryClient();
   const { id } = useParams();
   const navigate = useNavigate();
@@ -41,8 +39,7 @@ export default function InvoiceCreation({ settings }: { settings: any }) {
       const res = await fetch(url, {
         method,
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(invoicePayload)
       });
@@ -84,11 +81,11 @@ export default function InvoiceCreation({ settings }: { settings: any }) {
   const { data: invoiceToEdit, isLoading: isFetchingInvoice } = useQuery({
     queryKey: ['invoice', id],
     queryFn: async () => {
-      const res = await fetch(`/api/invoices/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`/api/invoices/${id}`);
       if (!res.ok) throw new Error('Failed to fetch invoice');
       return res.json();
     },
-    enabled: !!id && !!token,
+    enabled: !!id,
   });
 
   useEffect(() => {

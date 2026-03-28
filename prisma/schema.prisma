@@ -10,37 +10,8 @@ datasource db {
   url      = "file:./dev.db"
 }
 
-model User {
-  id            String       @id @default(cuid())
-  email         String       @unique
-  passwordHash  String
-  name          String?
-  role          String       @default("staff") // owner, admin, staff, read_only
-  organizationId String
-  organization  Organization @relation(fields: [organizationId], references: [id])
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  auditLogs     AuditLog[]
-}
-
-model Organization {
-  id            String       @id @default(cuid())
-  name          String
-  logoUrl       String?
-  themeColor    String?
-  taxInclusive  Boolean      @default(false)
-  invoicePrefix String       @default("INV-")
-  nextInvoiceNum Int         @default(1)
-  users         User[]
-  invoices      Invoice[]
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-}
-
 model Invoice {
   id             String       @id @default(cuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id])
   customerName   String
   customerDetails String?
   invoiceNumber  String
@@ -83,16 +54,4 @@ model Payment {
   method      String   // cash, bank_transfer, card, other
   reference   String?
   createdAt   DateTime @default(now())
-}
-
-model AuditLog {
-  id             String   @id @default(cuid())
-  organizationId String
-  userId         String?
-  user           User?    @relation(fields: [userId], references: [id])
-  action         String
-  entityType     String
-  entityId       String
-  details        String
-  createdAt      DateTime @default(now())
 }
