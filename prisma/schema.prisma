@@ -1,0 +1,98 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id            String       @id @default(cuid())
+  email         String       @unique
+  passwordHash  String
+  name          String?
+  role          String       @default("staff") // owner, admin, staff, read_only
+  organizationId String
+  organization  Organization @relation(fields: [organizationId], references: [id])
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  auditLogs     AuditLog[]
+}
+
+model Organization {
+  id            String       @id @default(cuid())
+  name          String
+  logoUrl       String?
+  themeColor    String?
+  taxInclusive  Boolean      @default(false)
+  invoicePrefix String       @default("INV-")
+  nextInvoiceNum Int         @default(1)
+  users         User[]
+  invoices      Invoice[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+model Invoice {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  customerName   String
+  customerDetails String?
+  invoiceNumber  String
+  status         String       @default("draft") // draft, sent, partially_paid, paid, overdue
+  issueDate      DateTime
+  dueDate        DateTime
+  subtotal       Float
+  taxTotal       Float
+  discountTotal  Float
+  total          Float
+  amountDue      Float
+  currency       String       @default("USD")
+  exchangeRate   Float        @default(1.0)
+  notes          String?
+  terms          String?
+  lineItems      InvoiceLineItem[]
+  payments       Payment[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model InvoiceLineItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Float
+  unitPrice   Float
+  taxRate     Float   @default(0)
+  discount    Float   @default(0) // percentage
+  total       Float
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount      Float
+  date        DateTime
+  method      String   // cash, bank_transfer, card, other
+  reference   String?
+  createdAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id])
+  action         String
+  entityType     String
+  entityId       String
+  details        String
+  createdAt      DateTime @default(now())
+}
