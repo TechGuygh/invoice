@@ -64,6 +64,12 @@ router.post('/auth/auto-login', async (req, res) => {
   }
 });
 
+router.post('/auth/logout', authenticate, async (req, res) => {
+  // In a real app with refresh tokens, you would invalidate them here.
+  // For JWT access tokens, the client just drops the token.
+  res.json({ success: true, message: 'Logged out successfully' });
+});
+
 // Customers and Items routes removed
 
 // Invoices

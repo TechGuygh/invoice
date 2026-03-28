@@ -13,6 +13,8 @@ import InvoiceCreation from './components/InvoiceCreation';
 import Settings from './components/Settings';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
+import Login from './components/Login';
+
 const queryClient = new QueryClient();
 
 function MainLayout() {
@@ -101,6 +103,19 @@ function MainLayout() {
               <p className="text-xs text-neutral-500 truncate capitalize">{user?.role}</p>
             </div>
           </div>
+          <button
+            onClick={async () => {
+              await logout();
+              queryClient.clear();
+              window.location.href = '/login';
+            }}
+            className="w-full flex items-center px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+          >
+            <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Logout
+          </button>
         </div>
       </motion.aside>
 
@@ -146,14 +161,18 @@ function MainLayout() {
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
   
   if (loading) {
     return <div className="h-screen flex items-center justify-center bg-neutral-50"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>;
   }
   
   if (!user) {
-    return <div className="h-screen flex items-center justify-center bg-neutral-50 text-neutral-600">Failed to initialize session. Please refresh the page.</div>;
+    // If no user, clear session data and redirect to login
+    logout();
+    queryClient.clear();
+    window.location.href = '/login?error=Session expired. Please log in again.';
+    return <div className="h-screen flex items-center justify-center bg-neutral-50 text-neutral-600">Session expired. Redirecting to login...</div>;
   }
   
   return <>{children}</>;
@@ -165,6 +184,7 @@ export default function App() {
       <AuthProvider>
         <Router>
           <Routes>
+            <Route path="/login" element={<Login />} />
             <Route path="/*" element={
               <ProtectedRoute>
                 <MainLayout />
